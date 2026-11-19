@@ -44,6 +44,8 @@ func _physics_process(dt: float) -> void:
 	rig.face(facing)
 	rig.animate_legs(absf(velocity.x), is_on_floor(), dt)
 	rig.swing_arms()
+	rig.lean = lerpf(rig.lean, velocity.x * facing * 0.05, 1.0 - exp(-10.0 * dt))
+	rig.update_body(dt)
 
 
 ## Struck at `point` with relative velocity `hit_vel`.

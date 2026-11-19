@@ -14,6 +14,7 @@ var trauma := 0.0
 var kills := 0
 
 var blood_mat: StandardMaterial3D
+var _dust_mat: StandardMaterial3D
 var _mats := {}
 var _splats: Array[Node3D] = []
 var _corpses: Array[Node] = []
@@ -119,6 +120,44 @@ func spawn_blood(pos: Vector3, dir: Vector3, amount: int) -> void:
 		var delay := pos.distance_to(hit.position) / 14.0
 		get_tree().create_timer(delay, false).timeout.connect(
 			_add_splat.bind(hit.position, hit.normal, randf_range(0.1, 0.38), hit.collider))
+
+
+## Puff of chunky dust for landings, jumps, skids and kicks.
+func spawn_dust(pos: Vector3, dir: Vector3, amount: int) -> void:
+	var scene := get_tree().current_scene
+	if scene == null or amount <= 0:
+		return
+	if _dust_mat == null:
+		_dust_mat = StandardMaterial3D.new()
+		_dust_mat.albedo_color = Color(0.95, 0.9, 0.82)
+		_dust_mat.roughness = 1.0
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.amount = amount
+	p.lifetime = 0.45
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE * 0.12
+	box.material = _dust_mat
+	p.mesh = box
+	p.direction = dir.normalized() if dir.length_squared() > 0.0 else Vector3.UP
+	p.spread = 70.0
+	p.initial_velocity_min = 1.0
+	p.initial_velocity_max = 3.5
+	p.gravity = Vector3(0, 2.0, 0)
+	p.damping_min = 4.0
+	p.damping_max = 6.0
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.4
+	var curve := Curve.new()
+	curve.add_point(Vector2(0, 1))
+	curve.add_point(Vector2(1, 0))
+	p.scale_amount_curve = curve
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	scene.add_child(p)
+	p.global_position = pos + Vector3(0, 0.05, 0)
+	p.emitting = true
+	p.finished.connect(p.queue_free)
 
 
 func _add_splat(at: Vector3, normal: Vector3, radius: float, collider: Object) -> void:

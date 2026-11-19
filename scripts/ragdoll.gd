@@ -93,7 +93,7 @@ func _neck_fountain(torso: RigidBody3D) -> void:
 	p.scale_amount_min = 0.6
 	p.scale_amount_max = 1.5
 	torso.add_child(p)
-	p.position = Vector3(0, 0.33, 0)
+	p.position = Vector3(0, 0.21, 0)
 	p.emitting = true
 	get_tree().create_timer(1.8, false).timeout.connect(func():
 		if is_instance_valid(p):

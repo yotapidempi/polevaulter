@@ -3,7 +3,7 @@ extends Node3D
 ## Draws the pole as a chain of cylinders along a bent curve. Purely visual.
 
 const SEGMENTS := 10
-const RADIUS := 0.045
+const RADIUS := 0.04
 
 var _segs: Array[MeshInstance3D] = []
 var _butt: MeshInstance3D
@@ -35,7 +35,7 @@ func _ready() -> void:
 	_butt.mesh = grip
 	add_child(_butt)
 	var cap := BoxMesh.new()
-	cap.size = Vector3(0.13, 0.22, 0.13)
+	cap.size = Vector3(0.11, 0.18, 0.11)
 	cap.material = Game.mat(Color(0.95, 0.15, 0.12))
 	_tip = MeshInstance3D.new()
 	_tip.mesh = cap
@@ -58,7 +58,7 @@ func draw(hand: Vector3, dir: Vector3, length: float, bulge: float, butt: float)
 		prev = p
 	_place(_butt, hand - dir * butt, hand)
 	var tip_dir := (tip - prev).normalized() if tip.distance_to(prev) > 0.001 else dir
-	_place(_tip, tip - tip_dir * 0.22, tip)
+	_place(_tip, tip - tip_dir * 0.18, tip)
 
 
 func _place(m: MeshInstance3D, a: Vector3, b: Vector3) -> void:
