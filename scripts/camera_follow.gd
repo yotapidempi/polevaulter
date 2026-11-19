@@ -12,9 +12,11 @@ extends Camera3D
 var _target: Node3D
 var _focus := Vector3.ZERO
 var _zoom := 0.0
+var _base_fov := 50.0
 
 
 func _ready() -> void:
+	_base_fov = fov
 	_target = get_node(target_path)
 	_focus = _target.global_position + Vector3(0, height, 0)
 	_apply(Vector3.ZERO)
@@ -33,6 +35,11 @@ func _physics_process(dt: float) -> void:
 	_zoom = lerpf(_zoom, extra, 1.0 - exp(-2.0 * dt))
 	var s := Game.trauma * Game.trauma * shake_strength
 	_apply(Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * s)
+
+
+## Impact punch-in, in real time so it plays during freeze-frames.
+func _process(_dt: float) -> void:
+	fov = _base_fov - Game.fov_kick
 
 
 func snap() -> void:

@@ -69,7 +69,49 @@ func _physics_process(_dt: float) -> bool:
 		"wall": _wall()
 		"shots": _shots()
 		"swing": _swing()
-	return f > 400
+		"turn": _turn()
+		"presets": _presets()
+		"sounds":
+			if f == 3:
+				root.get_node("Sfx").export_wavs(ProjectSettings.globalize_path("res://test_out/sounds"))
+				print("exported")
+			return f > 5
+	return f > 400 and scen != "presets" or f > 300
+
+
+## Same mid-air overhead swing under every preset: how far the pole lags and the body drifts.
+func _presets() -> void:
+	var cycle := 70
+	var i := f / cycle
+	var k := f % cycle
+	if i >= 4:
+		return
+	if k == 3:
+		player.apply_preset(i)
+		tele(-6.0)
+		player.pole_angle = PI - 0.35
+		player.pole_omega = 0.0
+	if k == 8: Input.action_press("jump")
+	if k >= 10 and k < 30: aim(lerpf(170.0, -40.0, (k - 10) / 8.0) if k < 18 else -40.0)
+	if k == 30:
+		aim_off()
+		Input.action_release("jump")
+	if k in [12, 14, 16, 18, 20, 22, 26]:
+		log_state("%s stick=%d" % [player.preset_name, int(lerpf(170.0, -40.0, minf((k - 10) / 8.0, 1.0)))])
+	if k == 18 and i == 3: shot("heavy_mid")
+
+
+## Let go of the stick, then run right and turn left: the pole should stay put.
+func _turn() -> void:
+	if f == 5: tele(-6.0)
+	if f >= 10 and f < 40: aim(35.0)
+	if f == 40: aim_off()
+	if f == 60: Input.action_press("move_right")
+	if f == 90:
+		Input.action_release("move_right")
+		Input.action_press("move_left")
+	if f == 130: Input.action_release("move_left")
+	if f >= 38 and f < 140 and f % 6 == 0: log_state("facing=%d" % player.facing)
 
 
 ## Ground flick from rest to forward (wind-up time), then a mid-air overhead swing
@@ -96,7 +138,7 @@ func _vault() -> void:
 	if f == 70: aim_off()
 	if OS.has_environment("KICK") and f == int(OS.get_environment("KICK")): Input.action_press("jump")
 	if OS.has_environment("KICK") and f == int(OS.get_environment("KICK")) + 2: Input.action_release("jump")
-	if f % 4 == 0 and f < 130: log_state()
+	if f >= 36 and f < 84 and (f < 60 and f % 2 == 0 or f >= 60): log_state("charge=%.2f surf=%s" % [player.pole_charge(), root.get_node("Sfx").tap_for(player._plant_body) if player.planted else "-"])
 	if f in [46, 56, 66, 80, 100]: shot("vault_%d" % f)
 
 
@@ -107,6 +149,10 @@ func _pogo() -> void:
 
 
 func _strike() -> void:
+	if root.get_node("Game").kills == 1 and not has_meta("shot"):
+		set_meta("shot", true)
+		print("freeze time_scale=%.2f fov_kick=%.1f" % [Engine.time_scale, root.get_node("Game").fov_kick])
+		shot("impact")
 	if f == 5: tele(4.3)
 	if f >= 8 and f < 12: aim(150.0)
 	if f >= 12 and f < 50: aim(-20.0)
@@ -128,3 +174,15 @@ func _shots() -> void:
 	if f == 70: shot("crates")
 	if f == 80: tele(90.0)
 	if f == 110: shot("tower")
+
+
+var _pf := -1
+
+
+func _process(_dt: float) -> bool:
+	# Grab a few rendered frames during the strike freeze to check the impact effects.
+	if scen == "strike" and has_meta("shot"):
+		_pf += 1
+		if _pf in [3, 6, 10]:
+			shot("impact_%d" % _pf)
+	return false

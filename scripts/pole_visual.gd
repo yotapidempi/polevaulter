@@ -4,10 +4,15 @@ extends Node3D
 
 const SEGMENTS := 10
 const RADIUS := 0.04
+const SHAFT_COLOR := Color(0.98, 0.86, 0.3)
 
 var _segs: Array[MeshInstance3D] = []
 var _butt: MeshInstance3D
 var _tip: MeshInstance3D
+var _aim: MeshInstance3D
+var _shaft_mat: StandardMaterial3D
+var _charge := 0.0
+var _aim_dot: MeshInstance3D
 
 
 func _ready() -> void:
@@ -18,7 +23,13 @@ func _ready() -> void:
 	shaft.height = 1.0
 	shaft.radial_segments = 6
 	shaft.rings = 0
-	shaft.material = Game.mat(Color(0.98, 0.86, 0.3))
+	_shaft_mat = StandardMaterial3D.new()
+	_shaft_mat.albedo_color = SHAFT_COLOR
+	_shaft_mat.roughness = 0.6
+	_shaft_mat.emission_enabled = true
+	_shaft_mat.emission = Color(1.0, 0.55, 0.15)
+	_shaft_mat.emission_energy_multiplier = 0.0
+	shaft.material = _shaft_mat
 	for i in SEGMENTS:
 		var m := MeshInstance3D.new()
 		m.mesh = shaft
@@ -40,6 +51,46 @@ func _ready() -> void:
 	_tip = MeshInstance3D.new()
 	_tip.mesh = cap
 	add_child(_tip)
+
+	var line := BoxMesh.new()
+	line.size = Vector3(0.025, 1.0, 0.025)
+	var lm := StandardMaterial3D.new()
+	lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	lm.albedo_color = Color(1, 1, 1, 0.55)
+	line.material = lm
+	_aim = MeshInstance3D.new()
+	_aim.mesh = line
+	_aim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_aim.visible = false
+	add_child(_aim)
+	var dot := BoxMesh.new()
+	dot.size = Vector3(0.09, 0.09, 0.09)
+	dot.material = lm
+	_aim_dot = MeshInstance3D.new()
+	_aim_dot.mesh = dot
+	_aim_dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_aim_dot.visible = false
+	add_child(_aim_dot)
+
+
+## Faint line from the hands toward where the stick points, ending in a small marker.
+func draw_aim(hand: Vector3, dir: Vector3, length: float) -> void:
+	_place(_aim, hand + dir * 0.3, hand + dir * length)
+	_aim_dot.visible = true
+	_aim_dot.global_position = hand + dir * length
+
+
+## Glow with how loaded the pole is (0..1): this is exactly how strong a kick would be now.
+func set_charge(c: float) -> void:
+	_charge = lerpf(_charge, c, 0.5)
+	_shaft_mat.emission_energy_multiplier = _charge * _charge * 2.5
+	_shaft_mat.albedo_color = SHAFT_COLOR.lerp(Color(1.0, 0.98, 0.9), _charge)
+
+
+func hide_aim() -> void:
+	_aim.visible = false
+	_aim_dot.visible = false
 
 
 ## hand: grip point. dir: unit direction toward the tip. length: hand-to-tip chord.

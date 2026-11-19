@@ -6,6 +6,7 @@ extends Node3D
 @onready var player: Player = $Player
 @onready var cam = $Camera
 @onready var kills_label: Label = $HUD/Kills
+@onready var feel_label: Label = $HUD/Feel
 
 
 func _ready() -> void:
@@ -24,3 +25,4 @@ func _physics_process(_dt: float) -> void:
 
 func _process(_dt: float) -> void:
 	kills_label.text = "KILLS  %d" % Game.kills
+	feel_label.text = "FEEL  %d/%d  %s  (D-pad up/down)\n%s" % [Game.feel_preset + 1, Player.PRESETS.size(), player.preset_name, player.preset_note]

@@ -74,6 +74,7 @@ func _build(xform: Transform3D, facing: float, palette: Dictionary,
 		head.linear_velocity = base_vel * 1.4 + Vector3(0, 7, 0)
 		head.angular_velocity = Vector3(0, 0, randf_range(-25.0, 25.0))
 		_neck_fountain(bodies["torso"])
+	Game.flash(self)
 
 
 func _neck_fountain(torso: RigidBody3D) -> void:

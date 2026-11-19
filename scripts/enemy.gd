@@ -49,14 +49,22 @@ func _physics_process(dt: float) -> void:
 
 
 ## Struck at `point` with relative velocity `hit_vel`.
-func kill(point: Vector3, hit_vel: Vector3, decapitate: bool) -> void:
+func kill(point: Vector3, hit_vel: Vector3, decapitate: bool, power := 0.5) -> void:
 	if dead:
 		return
 	dead = true
 	Game.kills += 1
 	var corpse := Ragdoll.spawn(get_parent(), global_transform, rig.facing, rig.palette, hit_vel, point, decapitate)
 	Game.register_corpse(corpse)
-	Game.spawn_blood(point, hit_vel + Vector3.UP * 3.0, 70 if decapitate else 40)
+	Game.spawn_blood(point, hit_vel + Vector3.UP * 3.0, int(lerpf(25.0, 80.0, power)) + (30 if decapitate else 0))
+	# One main sound per kill; extra layers only when the hit earns them.
+	Sfx.play("thump", point, lerpf(-6.0, 0.0, power), lerpf(1.1, 0.8, power))
+	if decapitate:
+		Sfx.play("crack", point, -6.0, 0.9)
+	elif power > 0.45:
+		Sfx.play("crunch", point, lerpf(-16.0, -8.0, power), lerpf(1.0, 0.85, power))
+	else:
+		Sfx.play("splat", point, -14.0)
 	visible = false
 	collision_layer = 0
 	velocity = Vector3.ZERO

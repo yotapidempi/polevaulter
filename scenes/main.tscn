@@ -65,66 +65,77 @@ directional_shadow_max_distance = 60.0
 [node name="Level" type="Node3D" parent="."]
 
 [node name="FloorA" type="CSGBox3D" parent="Level"]
+metadata/surface = "grass"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, -3, 0)
 use_collision = true
 size = Vector3(68, 6, 8)
 material = SubResource("m_ground")
 
 [node name="StartWall" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 7, 0)
 use_collision = true
 size = Vector3(2, 26, 8)
 material = SubResource("m_wall")
 
 [node name="Step" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0.8, 0)
 use_collision = true
 size = Vector3(4, 1.6, 6)
 material = SubResource("m_stone")
 
 [node name="FloatPlank" type="CSGBox3D" parent="Level"]
+metadata/surface = "wood"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 3.0, 0)
 use_collision = true
 size = Vector3(4, 0.6, 6)
 material = SubResource("m_wood")
 
 [node name="BigWall" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 1.8, 0)
 use_collision = true
 size = Vector3(2, 3.6, 6)
 material = SubResource("m_wall")
 
 [node name="Hurdle" type="CSGBox3D" parent="Level"]
+metadata/surface = "wood"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.3, 0.6, 0)
 use_collision = true
 size = Vector3(0.6, 1.2, 6)
 material = SubResource("m_wood")
 
 [node name="FloorC" type="CSGBox3D" parent="Level"]
+metadata/surface = "grass"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 93, -3, 0)
 use_collision = true
 size = Vector3(50, 6, 8)
 material = SubResource("m_ground")
 
 [node name="Ceiling" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 80, 4.5, 0)
 use_collision = true
 size = Vector3(12, 1, 6)
 material = SubResource("m_stone")
 
 [node name="Tower" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 94, 3.5, 0)
 use_collision = true
 size = Vector3(4, 7, 6)
 material = SubResource("m_stone")
 
 [node name="Ledge" type="CSGBox3D" parent="Level"]
+metadata/surface = "wood"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 104, 5, 0)
 use_collision = true
 size = Vector3(4, 0.6, 6)
 material = SubResource("m_wood")
 
 [node name="EndWall" type="CSGBox3D" parent="Level"]
+metadata/surface = "stone"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 119, 7, 0)
 use_collision = true
 size = Vector3(2, 26, 8)
@@ -264,6 +275,17 @@ theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.1, 1)
 theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 32
 text = "KILLS  0"
+
+[node name="Feel" type="Label" parent="HUD"]
+offset_left = 24.0
+offset_top = 58.0
+offset_right = 900.0
+offset_bottom = 110.0
+theme_override_colors/font_color = Color(1, 0.92, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.1, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "FEEL"
 
 [node name="Hints" type="Label" parent="HUD"]
 anchors_preset = 2
