@@ -39,9 +39,17 @@ extends CharacterBody3D
 ## 0 = the pole pushes along itself, 1 = straight out of the surface it's planted on.
 @export_range(0.0, 1.0) var push_to_normal := 0.6
 @export var aim_threshold := 0.35
-@export var aim_stiffness := 900.0
-@export var aim_damping_ratio := 0.55
-@export var rest_stiffness := 160.0
+## The pole is a weighted lever driven by limited muscle: stiffness pulls it toward the
+## stick, but angular acceleration is capped, so big swings need a wind-up and carry through.
+@export var aim_stiffness := 260.0
+@export var aim_damping_ratio := 0.4
+@export var rest_stiffness := 90.0
+@export var max_swing_accel := 75.0   # rad/s², the muscle limit
+@export var max_swing_speed := 32.0   # rad/s
+@export var pole_gravity := 14.0      # rad/s² of sag pulling the tip down
+## How much swinging the pole pushes your body around (pole mass / body mass).
+@export var pole_mass_ratio := 0.15
+@export_range(0.0, 1.0) var ground_reaction := 0.35
 @export var plant_spring := 380.0
 @export var plant_damping := 2.0
 @export var max_preload := 0.4
@@ -49,16 +57,17 @@ extends CharacterBody3D
 @export var lever_strength := 120.0
 @export var lever_damping := 6.0
 @export var lever_max := 70.0
-@export var pole_kick := 8.0
-@export var kick_grace := 0.25
+@export var pole_kick := 6.5
+@export var max_kick_speed := 19.0
+@export var kick_grace := 0.16
 @export var slip_angle_deg := 74.0
 
 @export_group("Combat")
-@export var strike_speed := 9.0
-@export var decap_speed := 22.0
+@export var strike_speed := 11.0
+@export var decap_speed := 26.0
 @export var prop_hit_speed := 2.5
-## Killing something in mid-air bounces you up and re-opens the pole kick.
-@export var kill_bounce := 10.0
+## After a mid-air kill, A within this window bounces you off it (timing-scaled like a kick).
+@export var kill_kick_window := 0.2
 
 const CHEST_HEIGHT := Rig.CHEST
 const HAND_REACH := 0.22
@@ -80,6 +89,10 @@ var _last_raw := 0.0
 var _aiming := false
 var _stick_rate := 0.0
 var _kick_window := 0.0
+var _kick_window_len := 0.0
+var _last_comp := 0.0
+var _muscle_alpha := 0.0
+var last_kick_strength := 0.0
 var _kick_dir := Vector2.UP
 var _since_release := 1.0
 var _jumping := false
@@ -160,13 +173,15 @@ func _physics_process(dt: float) -> void:
 		v = _planted_step(v, aim, aiming, dt)
 	else:
 		_free_step(aim, aiming, dt)
+		v = _swing_reaction(v, on_floor, dt)
 		if aiming:
 			v = _try_plant(v)
 	# A while planted, or just after the pole lets go: kick off it.
 	if Input.is_action_just_pressed("jump") and (planted or _kick_window > 0.0):
+		var strength := _kick_strength()
 		if planted:
 			_release()
-		v = _pole_kick(v, _kick_dir)
+		v = _pole_kick(v, _kick_dir, strength)
 
 	if not planted and _buffer > 0.0 and _coyote > 0.0:
 		v.y = jump_velocity
@@ -283,7 +298,9 @@ func _free_step(aim: Vector2, aiming: bool, dt: float) -> void:
 	var k := aim_stiffness if aiming else rest_stiffness
 	var c := 2.0 * sqrt(k) * (aim_damping_ratio if aiming else 0.85)
 	var err := target - pole_angle
-	pole_omega = clampf(pole_omega + (k * err - c * pole_omega) * dt, -45.0, 45.0)
+	_muscle_alpha = clampf(k * err - c * pole_omega, -max_swing_accel, max_swing_accel)
+	var alpha := _muscle_alpha - pole_gravity * cos(pole_angle)
+	pole_omega = clampf(pole_omega + alpha * dt, -max_swing_speed, max_swing_speed)
 	pole_angle += pole_omega * dt
 
 	var hand := hand_pos()
@@ -310,6 +327,11 @@ func _try_plant(v: Vector2) -> Vector2:
 	if u.dot(-n) < cos(deg_to_rad(slip_angle_deg)):
 		return v  # too glancing: the tip skids off
 	var d := hand.distance_to(hit.position)
+	if hit.collider is Enemy:
+		# A swing fast enough to kill goes through; only slow contact pogos off them.
+		var tip_speed := Vector3(v.x, v.y, 0) + Vector3(-u.y, u.x, 0) * pole_omega * d
+		if (tip_speed - (hit.collider as Enemy).velocity).length() >= strike_speed:
+			return v
 
 	# Keep momentum: the part of the run that goes past the tip becomes swing around it,
 	# so a running plant carries you up and over instead of stopping you dead. Hitting the
@@ -340,7 +362,7 @@ func _release() -> void:
 	if planted:
 		var d := Vector2(hand_pos().x - anchor.x, hand_pos().y - anchor.y)
 		_kick_dir = d.normalized() if d.length() > 0.01 else Vector2.UP
-		_kick_window = kick_grace
+		_open_kick_window(kick_grace)
 		if not is_on_floor():
 			_launch_t = launch_control_time
 			rig.punch(2.5)
@@ -350,9 +372,38 @@ func _release() -> void:
 	_since_release = 0.0
 
 
+## Swinging a heavy pole pushes back on you: spinning it pulls you outward along the pole,
+## and speeding it up shoves your body the other way. Full effect in the air, damped by
+## your feet on the ground. A whiff drags you along with it.
+func _swing_reaction(v: Vector2, on_floor: bool, dt: float) -> Vector2:
+	var u := Vector2(cos(pole_angle), sin(pole_angle))
+	var perp := Vector2(-u.y, u.x)
+	var half := pole_length * 0.5
+	var react := u * (pole_omega * pole_omega * half) - perp * (_muscle_alpha * half)
+	react = (react * pole_mass_ratio).limit_length(45.0)
+	if on_floor:
+		react *= ground_reaction
+		react.y = maxf(react.y, 0.0) * 0.5  # don't pin yourself into the floor
+	return v + react * dt
+
+
+func _open_kick_window(length: float) -> void:
+	_kick_window = length
+	_kick_window_len = length
+
+
+## Timing matters: kick at the pole's deepest bend, or the instant it lets go, for full power.
+## Late kicks in the grace window fade toward half strength.
+func _kick_strength() -> float:
+	if planted:
+		return pole_kick * lerpf(0.75, 1.3, clampf(_last_comp / 0.3, 0.0, 1.0))
+	var late := 1.0 - clampf(_kick_window / maxf(_kick_window_len, 0.001), 0.0, 1.0)
+	return pole_kick * lerpf(1.15, 0.45, late)
+
+
 ## Kick off the pole (or out of a kill). The left stick steers it: push left/right to
 ## kick that way, leave it neutral to kick mostly up.
-func _pole_kick(v: Vector2, base_dir: Vector2) -> Vector2:
+func _pole_kick(v: Vector2, base_dir: Vector2, strength: float) -> Vector2:
 	_buffer = 0.0
 	_kick_window = 0.0
 	var steer := Vector2(_move * 1.2, 0.6) if absf(_move) > 0.2 else Vector2(0.0, 0.8)
@@ -360,12 +411,18 @@ func _pole_kick(v: Vector2, base_dir: Vector2) -> Vector2:
 	var along := v.dot(dir)
 	if along < 0.0:
 		v -= dir * along  # kicking against your motion cancels it first
-	v += dir * pole_kick
-	v.y = maxf(v.y, pole_kick * 0.55)
+	v += dir * strength
+	v.y = maxf(v.y, strength * 0.55)
+	v = v.limit_length(maxf(max_kick_speed, (v - dir * strength).length()))
 	_jumping = false
 	_launch_t = launch_control_time
-	rig.punch(4.5)
-	Game.spawn_dust(hand_pos() - Vector3(base_dir.x, base_dir.y, 0) * 1.5, Vector3(base_dir.x, base_dir.y, 0), 10)
+	var perfect := strength >= pole_kick * 1.1
+	rig.punch(6.0 if perfect else 3.5)
+	if perfect:
+		Game.add_trauma(0.2)
+	Game.spawn_dust(hand_pos() - Vector3(base_dir.x, base_dir.y, 0) * 1.5,
+		Vector3(base_dir.x, base_dir.y, 0), 18 if perfect else 6)
+	last_kick_strength = strength
 	return v
 
 
@@ -395,6 +452,7 @@ func _planted_step(v: Vector2, aim: Vector2, aiming: bool, dt: float) -> Vector2
 		return v
 
 	var comp := plant_rest - r
+	_last_comp = comp
 	# Push only: a planted tip can't pull you back.
 	var a_r := plant_spring * comp - plant_damping * v.dot(n) if comp > 0.0 else 0.0
 	var t := Vector2(-n.y, n.x)  # direction the hand moves when the pole turns counter-clockwise
@@ -468,12 +526,10 @@ func _check_strikes(dt: float) -> void:
 				Game.hitstop(0.045 + clampf(speed / 400.0, 0.0, 0.07))
 				Game.add_trauma(0.3 + clampf(speed / 60.0, 0.0, 0.4))
 				if not is_on_floor() and not planted:
-					# Air kill: bounce off it and get another kick, so kills chain.
-					velocity.y = maxf(velocity.y, kill_bounce)
-					_launch_t = launch_control_time
+					# Air kill: press A right after the hit to bounce off it. The window is
+					# short, but it doesn't tick during the freeze-frame, which gives you the beat.
 					_kick_dir = Vector2.UP
-					_kick_window = kick_grace * 1.6
-					rig.punch(3.0)
+					_open_kick_window(kill_kick_window)
 		elif col is RigidBody3D:
 			var rb: RigidBody3D = col
 			var rel := pv - rb.linear_velocity

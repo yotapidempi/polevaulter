@@ -52,7 +52,7 @@ func tele(x: float, y := 0.0) -> void:
 func log_state(tag := "") -> void:
 	print("%4d %-6s pos(%6.2f,%5.2f) vel(%6.2f,%6.2f) planted=%s ang=%6.1f kills=%d %s" % [
 		f, scen, player.global_position.x, player.global_position.y, player.velocity.x,
-		player.velocity.y, player.planted, rad_to_deg(player.pole_angle), root.get_node("Game").kills, tag])
+		player.velocity.y, player.planted, rad_to_deg(player.pole_angle), root.get_node("Game").kills, tag + (" kick=%.1f" % player.last_kick_strength if player.last_kick_strength > 0.0 else "")])
 
 
 func shot(name: String) -> void:
@@ -68,7 +68,22 @@ func _physics_process(_dt: float) -> bool:
 		"strike": _strike()
 		"wall": _wall()
 		"shots": _shots()
+		"swing": _swing()
 	return f > 400
+
+
+## Ground flick from rest to forward (wind-up time), then a mid-air overhead swing
+## to see how far the swing drags the body.
+func _swing() -> void:
+	if f == 5: tele(-6.0)
+	if f >= 20 and f < 50: aim(0.0)
+	if f >= 20 and f < 40: log_state("flick")
+	if f == 50: aim_off()
+	if f == 80: Input.action_press("jump")
+	if f >= 84 and f < 110: aim(lerpf(170.0, -60.0, (f - 84) / 12.0) if f < 96 else -60.0)
+	if f == 110: aim_off()
+	if f >= 80 and f < 120 and f % 3 == 0: log_state("air")
+	if f == 120: Input.action_release("jump")
 
 
 func _vault() -> void:
@@ -92,11 +107,11 @@ func _pogo() -> void:
 
 
 func _strike() -> void:
-	if f == 5: tele(3.0)
-	if f >= 30 and f < 34: aim(150.0)
-	if f >= 34 and f < 44: aim(-20.0)
-	if f == 44: aim_off()
-	if f >= 30 and f < 70 and f % 2 == 0: log_state()
+	if f == 5: tele(4.3)
+	if f >= 8 and f < 12: aim(150.0)
+	if f >= 12 and f < 50: aim(-20.0)
+	if f == 50: aim_off()
+	if f >= 8 and f < 50 and f % 2 == 0: log_state()
 	if f in [36, 40, 50, 80, 120]: shot("strike_%d" % f)
 
 
