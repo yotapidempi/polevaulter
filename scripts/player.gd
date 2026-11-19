@@ -1,0 +1,407 @@
+class_name Player
+extends CharacterBody3D
+## Hand-tuned platformer controller with a spring-driven pole.
+##
+## Left stick runs, A jumps. The right stick sets the pole's target angle; the pole chases it
+## through a stiff, slightly underdamped spring. When the tip meets a surface it plants:
+## the pole then pushes back on the player like a compressed spring, and turning the stick
+## while planted levers the body around the tip. Releasing the stick lets go; A while planted
+## kicks off the pole. Anything the shaft sweeps through fast enough gets hit.
+
+@export_group("Movement")
+@export var run_speed := 8.5
+@export var ground_accel := 75.0
+@export var ground_friction := 60.0
+@export var overspeed_friction := 10.0
+@export var air_accel := 30.0
+@export var gravity := 34.0
+@export var fall_gravity_mult := 1.3
+@export var jump_velocity := 12.5
+@export var jump_cut := 0.45
+@export var coyote_time := 0.1
+@export var jump_buffer := 0.12
+@export var max_fall := 32.0
+
+@export_group("Pole")
+@export var pole_length := 2.7
+@export var aim_threshold := 0.35
+@export var aim_stiffness := 900.0
+@export var aim_damping_ratio := 0.55
+@export var rest_stiffness := 160.0
+@export var plant_spring := 380.0
+@export var plant_damping := 2.0
+@export var max_preload := 0.4
+@export var max_stretch := 0.04
+@export var lever_strength := 120.0
+@export var lever_damping := 6.0
+@export var lever_max := 70.0
+@export var pole_kick := 8.0
+@export var kick_grace := 0.25
+@export var slip_angle_deg := 74.0
+
+@export_group("Combat")
+@export var strike_speed := 9.0
+@export var decap_speed := 22.0
+@export var prop_hit_speed := 2.5
+
+const CHEST_HEIGHT := 1.2
+const HAND_REACH := 0.3
+const REST_ANGLE := 0.35  # radians above horizontal, pointing behind
+
+var facing := 1.0
+var pole_angle := PI - REST_ANGLE
+var pole_omega := 0.0
+var planted := false
+var anchor := Vector3.ZERO
+var anchor_normal := Vector3.UP
+var plant_rest := 0.0
+
+var _plant_body: Object
+var _needs_clear := false
+var _aim_was := false
+var _target_u := 0.0
+var _last_raw := 0.0
+var _aiming := false
+var _stick_rate := 0.0
+var _kick_window := 0.0
+var _kick_dir := Vector2.UP
+var _since_release := 1.0
+var _jumping := false
+var _coyote := 0.0
+var _buffer := 0.0
+var _spawn := Vector3.ZERO
+var _strike_cd := {}
+var _vis_len := 2.7
+var _vis_bulge := 0.0
+var _vis_butt := 0.35
+var _strike_shape := CapsuleShape3D.new()
+
+var rig: Rig
+var pole: PoleVisual
+
+
+func _ready() -> void:
+	_spawn = global_position
+	rig = Rig.new()
+	rig.palette = Rig.PLAYER_PALETTE
+	add_child(rig)
+	pole = PoleVisual.new()
+	add_child(pole)
+	_strike_shape.radius = 0.16
+
+
+func respawn() -> void:
+	global_position = _spawn
+	velocity = Vector3.ZERO
+	planted = false
+	pole_omega = 0.0
+	reset_physics_interpolation()
+	pole.reset_physics_interpolation()
+
+
+func _physics_process(dt: float) -> void:
+	var move := Input.get_axis("move_left", "move_right")
+	var aim := Input.get_vector("aim_left", "aim_right", "aim_down", "aim_up")
+	var aiming := aim.length() > aim_threshold
+	_aiming = aiming
+	if absf(move) > 0.2:
+		facing = signf(move)
+
+	var on_floor := is_on_floor()
+	_coyote = coyote_time if on_floor else _coyote - dt
+	_buffer = jump_buffer if Input.is_action_just_pressed("jump") else _buffer - dt
+
+	var v := Vector2(velocity.x, velocity.y)
+	v = _run(v, move, on_floor, dt)
+
+	# Gravity, with a shorter hop when A is let go early.
+	if _jumping and v.y > 0.0 and not Input.is_action_pressed("jump"):
+		v.y *= jump_cut
+		_jumping = false
+	if v.y <= 0.0:
+		_jumping = false
+	var g := gravity * (fall_gravity_mult if v.y < 0.0 else 1.0)
+	v.y = maxf(v.y - g * dt, -max_fall)
+
+	_kick_window -= dt
+	_since_release += dt
+	if planted:
+		v = _planted_step(v, aim, aiming, dt)
+	else:
+		_free_step(aim, aiming, dt)
+		if aiming:
+			_try_plant(v)
+	# A while planted, or just after the pole lets go: kick off it.
+	if Input.is_action_just_pressed("jump") and (planted or _kick_window > 0.0):
+		if planted:
+			_release()
+		v = _pole_kick(v, _kick_dir)
+
+	if not planted and _buffer > 0.0 and _coyote > 0.0:
+		v.y = jump_velocity
+		_jumping = true
+		_buffer = 0.0
+		_coyote = 0.0
+
+	velocity = Vector3(v.x, v.y, 0.0)
+	move_and_slide()
+	if absf(global_position.z) > 0.0001:
+		global_position.z = 0.0
+
+	_check_strikes(dt)
+	_update_visuals(dt)
+
+
+func _run(v: Vector2, move: float, on_floor: bool, dt: float) -> Vector2:
+	var target := move * run_speed
+	var has_input := absf(move) > 0.1
+	var control := 0.5 if planted else 1.0
+	if on_floor:
+		if absf(v.x) > run_speed and (not has_input or signf(move) == signf(v.x)):
+			v.x = move_toward(v.x, signf(v.x) * run_speed, overspeed_friction * dt)
+		elif has_input:
+			v.x = move_toward(v.x, target, ground_accel * control * dt)
+		else:
+			v.x = move_toward(v.x, 0.0, ground_friction * dt)
+	elif has_input and v.x * signf(move) < run_speed:
+		# Air control never brakes a launch, it only steers below run speed.
+		v.x = move_toward(v.x, target, air_accel * control * dt)
+	return v
+
+
+# --- Pole -------------------------------------------------------------------
+
+func _dir(angle: float) -> Vector3:
+	return Vector3(cos(angle), sin(angle), 0.0)
+
+
+func hand_pos() -> Vector3:
+	return global_position + Vector3(0, CHEST_HEIGHT, 0) + _dir(pole_angle) * HAND_REACH
+
+
+func _rest_target() -> float:
+	return PI - REST_ANGLE if facing > 0.0 else REST_ANGLE
+
+
+## Angle change from `from` to `to`. Big jumps (stick snapped from neutral, or returning
+## to rest) go over the head rather than through the floor; small ones take the short way.
+func _swing_delta(from: float, to: float) -> float:
+	var d1 := wrapf(to - from, -PI, PI)
+	if absf(d1) < deg_to_rad(100.0):
+		return d1
+	var d2 := d1 - signf(d1) * TAU
+	if _passes_top(from, d1):
+		return d1
+	if _passes_top(from, d2):
+		return d2
+	return d1
+
+
+func _passes_top(start: float, d: float) -> bool:
+	var lo := minf(start, start + d)
+	var hi := maxf(start, start + d)
+	var k := ceilf((lo - PI * 0.5) / TAU)
+	return PI * 0.5 + k * TAU <= hi
+
+
+func _free_step(aim: Vector2, aiming: bool, dt: float) -> void:
+	# The target is tracked unwrapped, so spinning the stick spins the pole.
+	var target: float
+	if aiming:
+		var raw := atan2(aim.y, aim.x)
+		if _aim_was:
+			_target_u += wrapf(raw - _last_raw, -PI, PI)
+		else:
+			_target_u = pole_angle + _swing_delta(pole_angle, raw)
+		_last_raw = raw
+		target = _target_u
+	else:
+		target = pole_angle + _swing_delta(pole_angle, _rest_target())
+	_aim_was = aiming
+	if absf(pole_angle) > TAU * 4.0:
+		var shift := TAU * roundf(pole_angle / TAU)
+		pole_angle -= shift
+		_target_u -= shift
+
+	var k := aim_stiffness if aiming else rest_stiffness
+	var c := 2.0 * sqrt(k) * (aim_damping_ratio if aiming else 0.85)
+	var err := target - pole_angle
+	pole_omega = clampf(pole_omega + (k * err - c * pole_omega) * dt, -45.0, 45.0)
+	pole_angle += pole_omega * dt
+
+	var hand := hand_pos()
+	var u := _dir(pole_angle)
+	var hit := _ray(hand, hand + u * pole_length, Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_ENEMIES)
+	_vis_len = pole_length
+	if hit.is_empty() or _since_release > 0.35:
+		_needs_clear = false
+	if not hit.is_empty():
+		_vis_len = maxf(0.2, hand.distance_to(hit.position))
+	_vis_bulge = 0.0
+	_vis_butt = 0.35
+
+
+func _try_plant(v: Vector2) -> void:
+	if _needs_clear:
+		return
+	var hand := hand_pos()
+	var u := _dir(pole_angle)
+	var hit := _ray(hand, hand + u * pole_length, Game.LAYER_WORLD | Game.LAYER_PROPS | Game.LAYER_ENEMIES)
+	if hit.is_empty():
+		return
+	var n: Vector3 = hit.normal
+	if u.dot(-n) < cos(deg_to_rad(slip_angle_deg)):
+		return  # too glancing: the tip skids off
+	var d := hand.distance_to(hit.position)
+	var tip_v := Vector3(v.x, v.y, 0) + Vector3(-u.y, u.x, 0) * pole_omega * d
+	var into := tip_v.dot(-n)
+	planted = true
+	anchor = Vector3(hit.position.x, hit.position.y, 0.0)
+	anchor_normal = n
+	plant_rest = minf(pole_length, d + max_preload * clampf(into / 6.0, 0.0, 1.0))
+	_plant_body = hit.collider
+	if _plant_body is RigidBody3D:
+		var rb: RigidBody3D = _plant_body
+		rb.apply_impulse(-n * maxf(into, 0.0) * rb.mass * 0.4, hit.position - rb.global_position)
+
+
+func _release() -> void:
+	if planted:
+		var d := Vector2(hand_pos().x - anchor.x, hand_pos().y - anchor.y)
+		_kick_dir = d.normalized() if d.length() > 0.01 else Vector2.UP
+		_kick_window = kick_grace
+	planted = false
+	_plant_body = null
+	_needs_clear = true
+	_since_release = 0.0
+
+
+func _pole_kick(v: Vector2, dir: Vector2) -> Vector2:
+	_buffer = 0.0
+	_kick_window = 0.0
+	v += dir * pole_kick
+	v.y = maxf(v.y, pole_kick * 0.6)
+	_jumping = false
+	return v
+
+
+func _planted_step(v: Vector2, aim: Vector2, aiming: bool, dt: float) -> Vector2:
+	if not aiming or not is_instance_valid(_plant_body):
+		_release()
+		_free_step(aim, aiming, dt)
+		return v
+	if _plant_body is CollisionObject3D and (_plant_body as CollisionObject3D).collision_layer == 0:
+		_release()  # e.g. the enemy we stood on just died
+		_free_step(aim, aiming, dt)
+		return v
+
+	var hand := hand_pos()
+	var d := Vector2(hand.x - anchor.x, hand.y - anchor.y)
+	var r := maxf(d.length(), 0.05)
+	var n := d / r              # tip -> hand
+	var u := -n                 # hand -> tip
+	var cur := atan2(u.y, u.x)
+	var target := atan2(aim.y, aim.x)
+	var err := wrapf(target - cur, -PI, PI)
+
+	var slipping := Vector3(u.x, u.y, 0).dot(-anchor_normal) < cos(deg_to_rad(slip_angle_deg))
+	if r - plant_rest > max_stretch or absf(err) > 2.4 or slipping:
+		_release()
+		_free_step(aim, aiming, dt)
+		return v
+
+	var comp := plant_rest - r
+	# Push only: a planted tip can't pull you back.
+	var a_r := plant_spring * comp - plant_damping * v.dot(n) if comp > 0.0 else 0.0
+	var t := Vector2(-n.y, n.x)  # direction the hand moves when the pole turns counter-clockwise
+	# PD lever: damp only the difference between how fast the pole turns and how fast the
+	# stick turns, so sweeping the stick keeps momentum but a held stick settles.
+	var stick_rate := wrapf(target - _last_raw, -PI, PI) / dt
+	_stick_rate = lerpf(_stick_rate, stick_rate, 0.5)
+	var pole_rate := v.dot(t) / r
+	var a_t := lever_strength * err + lever_damping * (_stick_rate - pole_rate) * r
+	a_t = clampf(a_t, -lever_max, lever_max)
+	v += (n * a_r + t * a_t) * dt
+
+	pole_omega = wrapf(cur - pole_angle, -PI, PI) / dt
+	pole_angle = cur
+	_target_u = cur + err
+	_last_raw = target
+	_aim_was = true
+	_vis_len = r
+	_vis_bulge = sqrt(maxf(0.0, plant_rest * plant_rest - r * r)) * 0.3
+	_vis_butt = 0.35 + (pole_length - plant_rest)
+	return v
+
+
+# --- Combat -----------------------------------------------------------------
+
+func _check_strikes(dt: float) -> void:
+	for id in _strike_cd.keys():
+		_strike_cd[id] -= dt
+		if _strike_cd[id] <= 0.0:
+			_strike_cd.erase(id)
+	if not _aiming:
+		return  # a carried pole doesn't hurt anyone
+
+	var hand := hand_pos()
+	var u := _dir(pole_angle)
+	var len := maxf(_vis_len, 0.3)
+	_strike_shape.height = len + _strike_shape.radius * 2.0
+	var y := u
+	var z := Vector3.BACK
+	var x := y.cross(z)
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = _strike_shape
+	q.transform = Transform3D(Basis(x, y, z), hand + u * (len * 0.5))
+	q.collision_mask = Game.LAYER_ENEMIES | Game.LAYER_RAGDOLLS | Game.LAYER_PROPS
+	q.exclude = [get_rid()]
+	var hits := get_world_3d().direct_space_state.intersect_shape(q, 24)
+
+	for h in hits:
+		var col: Object = h.collider
+		if col == null or _strike_cd.has(col.get_instance_id()):
+			continue
+		var centre: Vector3 = (col as Node3D).global_position
+		if col is Enemy:
+			centre += Vector3(0, 1.1, 0)
+		var s := clampf((centre - hand).dot(u), 0.0, len)
+		var point := hand + u * s
+		var pv := velocity + Vector3(-u.y, u.x, 0) * pole_omega * s
+
+		if col is Enemy:
+			var enemy: Enemy = col
+			var rel := pv - enemy.velocity
+			var speed := rel.length()
+			if speed >= strike_speed and not enemy.dead:
+				_strike_cd[col.get_instance_id()] = 0.3
+				enemy.kill(point, rel, speed >= decap_speed)
+				pole_omega *= 0.55
+				Game.hitstop(0.045 + clampf(speed / 400.0, 0.0, 0.07))
+				Game.add_trauma(0.3 + clampf(speed / 60.0, 0.0, 0.4))
+		elif col is RigidBody3D:
+			var rb: RigidBody3D = col
+			var rel := pv - rb.linear_velocity
+			if rel.length() >= prop_hit_speed:
+				_strike_cd[col.get_instance_id()] = 0.12
+				rb.apply_impulse(rel * rb.mass * 0.45, point - rb.global_position)
+				if rb.collision_layer & Game.LAYER_RAGDOLLS and rel.length() > strike_speed:
+					Game.spawn_blood(point, rel, 10)
+					Game.add_trauma(0.1)
+
+
+# --- Visuals ----------------------------------------------------------------
+
+func _update_visuals(dt: float) -> void:
+	rig.face(facing)
+	rig.animate_legs(absf(velocity.x), is_on_floor(), dt)
+	var hand := hand_pos()
+	var u := _dir(pole_angle)
+	rig.point_arm(rig.shoulder_f, hand)
+	rig.point_arm(rig.shoulder_b, hand - u * 0.32)
+	pole.draw(hand, u, _vis_len, _vis_bulge, _vis_butt)
+
+
+func _ray(from: Vector3, to: Vector3, mask: int) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(from, to, mask, [get_rid()])
+	return get_world_3d().direct_space_state.intersect_ray(q)

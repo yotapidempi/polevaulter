@@ -1,0 +1,280 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="3_enemy"]
+[ext_resource type="PackedScene" path="res://scenes/crate.tscn" id="4_crate"]
+[ext_resource type="Script" path="res://scripts/camera_follow.gd" id="5_cam"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+sky_top_color = Color(0.22, 0.42, 0.85, 1)
+sky_horizon_color = Color(0.98, 0.72, 0.55, 1)
+ground_bottom_color = Color(0.22, 0.2, 0.3, 1)
+ground_horizon_color = Color(0.98, 0.72, 0.55, 1)
+sun_angle_max = 20.0
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
+[sub_resource type="Environment" id="env"]
+background_mode = 2
+sky = SubResource("sky")
+ambient_light_source = 2
+ambient_light_color = Color(0.52, 0.5, 0.68, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 3
+tonemap_white = 1.4
+fog_enabled = true
+fog_light_color = Color(0.85, 0.62, 0.55, 1)
+fog_density = 0.0025
+
+[sub_resource type="StandardMaterial3D" id="m_ground"]
+albedo_color = Color(0.3, 0.6, 0.22, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="m_stone"]
+albedo_color = Color(0.62, 0.56, 0.5, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="m_wall"]
+albedo_color = Color(0.36, 0.32, 0.5, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="m_wood"]
+albedo_color = Color(0.72, 0.4, 0.18, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="m_far1"]
+albedo_color = Color(0.33, 0.3, 0.55, 1)
+
+[sub_resource type="StandardMaterial3D" id="m_far2"]
+albedo_color = Color(0.6, 0.32, 0.4, 1)
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+light_color = Color(1, 0.94, 0.85, 1)
+light_energy = 1.0
+shadow_enabled = true
+directional_shadow_max_distance = 60.0
+
+[node name="Level" type="Node3D" parent="."]
+
+[node name="FloorA" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, -3, 0)
+use_collision = true
+size = Vector3(68, 6, 8)
+material = SubResource("m_ground")
+
+[node name="StartWall" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 7, 0)
+use_collision = true
+size = Vector3(2, 26, 8)
+material = SubResource("m_wall")
+
+[node name="Step" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0.8, 0)
+use_collision = true
+size = Vector3(4, 1.6, 6)
+material = SubResource("m_stone")
+
+[node name="FloatPlank" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 3.0, 0)
+use_collision = true
+size = Vector3(4, 0.6, 6)
+material = SubResource("m_wood")
+
+[node name="BigWall" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 2.5, 0)
+use_collision = true
+size = Vector3(2, 5, 6)
+material = SubResource("m_wall")
+
+[node name="Hurdle" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50.3, 0.6, 0)
+use_collision = true
+size = Vector3(0.6, 1.2, 6)
+material = SubResource("m_wood")
+
+[node name="FloorC" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 93, -3, 0)
+use_collision = true
+size = Vector3(50, 6, 8)
+material = SubResource("m_ground")
+
+[node name="Ceiling" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 80, 4.5, 0)
+use_collision = true
+size = Vector3(12, 1, 6)
+material = SubResource("m_stone")
+
+[node name="Tower" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 94, 3.5, 0)
+use_collision = true
+size = Vector3(4, 7, 6)
+material = SubResource("m_stone")
+
+[node name="Ledge" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 104, 5, 0)
+use_collision = true
+size = Vector3(4, 0.6, 6)
+material = SubResource("m_wood")
+
+[node name="EndWall" type="CSGBox3D" parent="Level"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 119, 7, 0)
+use_collision = true
+size = Vector3(2, 26, 8)
+material = SubResource("m_wall")
+
+[node name="Backdrop" type="Node3D" parent="."]
+
+[node name="Far1" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 4, -16)
+use_collision = false
+size = Vector3(7, 15, 4)
+material = SubResource("m_far2")
+
+[node name="Far2" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 3, -16)
+use_collision = false
+size = Vector3(7, 13, 4)
+material = SubResource("m_far1")
+
+[node name="Far3" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 2, -16)
+use_collision = false
+size = Vector3(7, 11, 4)
+material = SubResource("m_far2")
+
+[node name="Far4" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33, 1, -16)
+use_collision = false
+size = Vector3(7, 9, 4)
+material = SubResource("m_far1")
+
+[node name="Far5" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 47, 5, -16)
+use_collision = false
+size = Vector3(7, 16, 4)
+material = SubResource("m_far2")
+
+[node name="Far6" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 61, 4, -16)
+use_collision = false
+size = Vector3(7, 14, 4)
+material = SubResource("m_far1")
+
+[node name="Far7" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 75, 3, -16)
+use_collision = false
+size = Vector3(7, 12, 4)
+material = SubResource("m_far2")
+
+[node name="Far8" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 88, 2, -16)
+use_collision = false
+size = Vector3(7, 10, 4)
+material = SubResource("m_far1")
+
+[node name="Far9" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 102, 1, -16)
+use_collision = false
+size = Vector3(7, 8, 4)
+material = SubResource("m_far2")
+
+[node name="Far10" type="CSGBox3D" parent="Backdrop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 116, 4, -16)
+use_collision = false
+size = Vector3(7, 15, 4)
+material = SubResource("m_far1")
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="Enemy1" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 0)
+
+[node name="Enemy2" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0, 0)
+
+[node name="Enemy3" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0, 0)
+
+[node name="Enemy4" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0, 0)
+
+[node name="Enemy5" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 53, 0, 0)
+
+[node name="Enemy6" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0, 0)
+
+[node name="Enemy7" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 80, 0, 0)
+
+[node name="Enemy8" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 94, 7, 0)
+
+[node name="Enemy9" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 104, 5.3, 0)
+
+[node name="Enemy10" parent="Enemies" instance=ExtResource("3_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 110, 0, 0)
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="Crate1" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.45, 0)
+
+[node name="Crate2" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 1.35, 0)
+
+[node name="Crate3" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 2.25, 0)
+
+[node name="Crate4" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 41, 0.45, 0)
+
+[node name="Crate5" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 108, 0.45, 0)
+
+[node name="Crate6" parent="Props" instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 108, 1.35, 0)
+
+[node name="Camera" type="Camera3D" parent="."]
+fov = 50.0
+far = 300.0
+script = ExtResource("5_cam")
+target_path = NodePath("../Player")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Kills" type="Label" parent="HUD"]
+offset_left = 24.0
+offset_top = 16.0
+offset_right = 400.0
+offset_bottom = 60.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.1, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 32
+text = "KILLS  0"
+
+[node name="Hints" type="Label" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -48.0
+offset_right = 1200.0
+offset_bottom = -16.0
+theme_override_colors/font_color = Color(1, 1, 1, 0.85)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.1, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 18
+text = "L-stick run   A jump / pole kick   R-stick aim pole (tip plants on surfaces, swing to hit)   Back restart"
